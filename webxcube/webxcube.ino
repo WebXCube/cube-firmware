@@ -1,8 +1,4 @@
-#include <MPU9250.h>
 #include "esp_adc_cal.h"
-#include "charge.h"
-#include <TFT_eSPI.h>
-#include <pcf8563.h>
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEServer.h>
@@ -10,10 +6,23 @@
 #include "esp_bt_device.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include "Free_Fonts.h"
 
 #include <WiFiManager.h>  //https://github.com/tzapu/WiFiManager
 
+
+
+
+#include <Wire.h>
+
+#include "SparkFun_BNO080_Arduino_Library.h" // Click here to get the library: http://librarymanager/All#SparkFun_BNO080
+BNO080 myIMU;
+
+
+
+
+unsigned long timerDelay = 10;
+
+String response;
 
 
 #include <ESPmDNS.h>
@@ -39,9 +48,7 @@ bool otaMode = false;
 
 int writeCount = 0;
 
-MPU9250 mpu;
-TFT_eSPI tft = TFT_eSPI();
-PCF8563_Class rtc;
+
 boolean start = false;
 
 BLECharacteristic *pCharacteristic;
@@ -90,7 +97,7 @@ int pacnum = 0;
 #define CHARGE_PIN 32
 
 //maintain compatability with HM-10
-#define BLE_NAME "MM"  //must match filters name in bluetoothterminal.js- navigator.bluetooth.requestDevice
+#define BLE_NAME "WebXCube"  //must match filters name in bluetoothterminal.js- navigator.bluetooth.requestDevice
 // BLEUUID  SERVICE_UUID((uint16_t)0x1802); // UART service UUID
 // BLEUUID CHARACTERISTIC_UUID ((uint16_t)0x1803);
 
@@ -126,25 +133,10 @@ void configModeCallback(WiFiManager *myWiFiManager) {
   //if you used auto generated SSID, print it
   Serial.println(myWiFiManager->getConfigPortalSSID());
 
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_GREEN);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString("OTA Mode", tft.width() / 2, tft.height() / 2 - 20);
-  //tft.drawString("configure wrist", tft.width()/2, tft.height() / 2 + 20);
-  tft.setTextColor(TFT_WHITE);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString(mac_address, tft.width() / 2, tft.height() / 2);
 }
 
 void drawProgressBar(uint16_t x0, uint16_t y0, uint16_t w, uint16_t h, uint8_t percentage, uint16_t frameColor, uint16_t barColor) {
-  if (percentage == 0) {
-    tft.fillRoundRect(x0, y0, w, h, 3, TFT_BLACK);
-  }
-  uint8_t margin = 2;
-  uint16_t barHeight = h - 2 * margin;
-  uint16_t barWidth = w - 2 * margin;
-  tft.drawRoundRect(x0, y0, w, h, 3, frameColor);
-  tft.fillRect(x0 + margin, y0 + margin, barWidth * percentage / 100.0, barHeight, barColor);
+
 }
 
 void setupOTA() {
@@ -315,26 +307,7 @@ void setup() {
 
 
 
-  tft.init();
-  tft.setRotation(1);
-  tft.setSwapBytes(true);
-  //tft.pushImage(0, 0, 160, 80, ttgo);
 
-
-  tft.setFreeFont(FF17);
-
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(random(0xFFFF), TFT_BLACK);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString("Mesquite Mocap", tft.width() / 2, 20);
-  tft.drawString("https://mesquite.cc", tft.width() / 2, tft.height() - 40);
-  tft.setTextColor(TFT_BLUE, TFT_BLACK);
-
-
-  pinMode(TP_PIN_PIN, INPUT);
-  //! Must be set to pull-up output mode in order to wake up in deep sleep mode
-  pinMode(TP_PWR_PIN, PULLUP);
-  digitalWrite(TP_PWR_PIN, HIGH);
 
   pinMode(LED_PIN, OUTPUT);
 
@@ -388,130 +361,26 @@ void setup() {
 
 
 
-  if (!mpu.setup(0x69)) {  // change to your own address
-    while (1) {
-      Serial.println("MPU connection failed. Please check your connection with `connection_check` example.");
-      delay(5000);
-    }
+  delay(100); //  Wait for BNO to boot
+  // Start i2c and BNO080
+  Wire.flush();   // Reset I2C
+  //myIMU.begin(BNO080_DEFAULT_ADDRESS, Wire);
+  myIMU.begin(0x69, Wire);
+
+  Wire.begin(9, 8);
+
+   if (myIMU.begin() == false)
+  {
+    Serial.println("BNO080 not detected at default I2C address. Check your jumpers and the hookup guide. Freezing...");
+    while (1);
   }
 
+  Wire.setClock(400000); //Increase I2C data rate to 400kHz
 
+  myIMU.enableRotationVector(50); //Send data update every 50ms
 
-  batt_level = getVoltage();
-
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString(mac_address, tft.width() / 2, 10);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString("Connect at:", tft.width() / 2, 30);
-  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString("https://mesquite.cc", tft.width() / 2, 45);
-  tft.setTextColor(TFT_BLUE, TFT_BLACK);
-
-  tft.drawString(batt_level, tft.width() / 2, tft.height() - 10);
-
-  batt_level = ", " + getVoltage();
-
-  while (!start) {
-    if (digitalRead(TP_PIN_PIN) == HIGH) {
-      if (!pressed) {
-        pressed = true;
-        pressedTime = millis();
-      }
-
-      if (millis() - pressedTime > 2000) {
-        if (digitalRead(TP_PIN_PIN) == HIGH) {
-          tft.fillScreen(TFT_BLACK);
-          tft.setTextColor(TFT_RED, TFT_BLACK);
-          tft.setTextDatum(MC_DATUM);
-          tft.drawString("POWER OFF", tft.width() / 2, tft.height() / 2);
-          // mpu.setSleepEnabled(true);
-          mpu.sleep(true);
-          Serial.println("Go to Sleep");
-          delay(3000);
-          tft.writecommand(ST7735_SLPIN);
-          tft.writecommand(ST7735_DISPOFF);
-          esp_sleep_enable_ext1_wakeup(GPIO_SEL_33, ESP_EXT1_WAKEUP_ANY_HIGH);
-          esp_deep_sleep_start();
-
-        } else {
-          tft.setTextColor(TFT_GREEN, TFT_BLACK);
-          tft.setTextDatum(MC_DATUM);
-          tft.drawString("Hold for 2 seconds", tft.width() / 2, tft.height() / 2);
-        }
-      }
-    } else {
-      pressed = false;
-    }
-    // delay(1000);
-  }
-
-  // calibrate anytime you want to
-  //tft.drawString("Accel Gyro calibration - 5sec.",  20, tft.height() / 2 );
-  Serial.println("Accel Gyro calibration will start in 5sec.");
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString(mac_address, tft.width() / 2, 10);
-  tft.setTextColor(TFT_ORANGE, TFT_BLACK);
-  tft.drawString("CALIBRATION (1)", tft.width() / 2, tft.height() / 2.5);
-
-  tft.drawString("Keep flat and still..", tft.width() / 2, tft.height() / 1.5);
-  Serial.println("Please leave the device still on the flat plane.");
-  mpu.verbose(true);
-  delay(5000);
-  mpu.calibrateAccelGyro();
-
-
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString(mac_address, tft.width() / 2, 10);
-  tft.setTextColor(TFT_GREENYELLOW, TFT_BLACK);
-  tft.drawString("CALIBRATION (2)", tft.width() / 2, tft.height() / 2.5);
-
-  tft.drawString("Wave in 8 pattern", tft.width() / 2, tft.height() / 1.5);
-  Serial.println("Please Wave device in a figure eight until done.");
-  delay(2000);
-  mpu.calibrateMag();
-
-  mpu.verbose(false);
-
-  calibrated = true;
-
-  batt_level = ", " + getVoltage();
-
-
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.drawString(mac_address, tft.width() / 2, 10);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
-  tft.drawString("Transmitting Data", tft.width() / 2, tft.height() / 2.5);
-  tft.setTextColor(TFT_BLUE, TFT_BLACK);
-  tft.drawString(Bone + batt_level, tft.width() / 2, tft.height() / 1.5);
-
-
-  pinMode(TP_PIN_PIN, INPUT);
-  //! Must be set to pull-up output mode in order to wake up in deep sleep mode
-  pinMode(TP_PWR_PIN, PULLUP);
-  digitalWrite(TP_PWR_PIN, HIGH);
-
-  pinMode(LED_PIN, OUTPUT);
-
-  pinMode(CHARGE_PIN, INPUT_PULLUP);
-
-  attachInterrupt(
-    CHARGE_PIN, [] {
-      charge_indication = true;
-    },
-    CHANGE);
-
-  if (digitalRead(CHARGE_PIN) == LOW) {
-    charge_indication = true;
-  }
+  Serial.println(F("Rotation vector enabled"));
+  Serial.println(F("Output in form i, j, k, real, accuracy"));
 
   xTaskCreatePinnedToCore(
     TaskBluetooth, "TaskBluetooth"  // A name just for humans
@@ -523,7 +392,7 @@ void setup() {
     NULL, 0);
 
   xTaskCreatePinnedToCore(
-    TaskReadMPU, "TaskReadMPU", 10000  // Stack size
+    TaskReadMPU, "TaskReadBNO", 10000  // Stack size
     ,
     NULL, 1  // Priority
     ,
@@ -599,36 +468,23 @@ void loop() {
 }
 
 void IMU_Show() {
-  if (mpu.update()) {
-    static uint32_t prev_ms = millis();
-    if (millis() > prev_ms + 1000) {
-      print_roll_pitch_yaw();
-      prev_ms = millis();
-    }
-    quat.x = mpu.getQuaternionX();
-    quat.y = mpu.getQuaternionY();
-    quat.z = mpu.getQuaternionZ();
-    quat.w = mpu.getQuaternionW();
-    // euler.x = mpu.getEulerX();
-    // euler.y = mpu.getEulerY();
-    // euler.z = mpu.getEulerZ();
-  }
-}
+  if (myIMU.dataAvailable() == true)
+  {
+    float quatI = myIMU.getQuatI();
+    float quatJ = myIMU.getQuatJ();
+    float quatK = myIMU.getQuatK();
+    float quatReal = myIMU.getQuatReal();
+    float quatRadianAccuracy = myIMU.getQuatRadianAccuracy();
 
-void print_roll_pitch_yaw() {
-  //tft.setTextColor(TFT_GREEN, TFT_BLACK);
-  //tft.fillScreen(TFT_BLACK);
-  //tft.setTextDatum(TL_DATUM);
-  // tft.drawString(mac_address,  0, 0, 0);
-  //snprintf(buff, sizeof(buff), "%s", mac_address.c_str());
-  //tft.drawString(buff, 0, 0);
-  //snprintf(buff, sizeof(buff), "--  w   x   y   z");
-  //tft.drawString(buff, 0, 8);
-  //snprintf(buff, sizeof(buff), "Q %.2f  %.2f  %.2f  %.2f", quat.w, quat.x, quat.y, quat.z);
-  //tft.drawString(buff, 0, 16);
-  // snprintf(buff, sizeof(buff), "E %.2f  %.2f  %.2f", euler.x, euler.y, euler.z);
-  // tft.drawString(buff, 0, 32);
-  Serial.println(String(quat.w) + " " + String(quat.x) + " " + String(quat.y) + " " + String(quat.z));
+    Serial.print(quatI, 2);
+    Serial.print(F(" "));
+    Serial.print(quatK, 2);
+    Serial.print(F(" "));
+    Serial.print(quatJ, 2);
+    Serial.print(F(" "));
+    Serial.println(quatReal, 2);
+
+  }
 }
 
 void print_calibration() {
@@ -677,7 +533,7 @@ void TaskBluetooth(void *pvParameters) {
   }
 }
 
-void TaskReadMPU(void *pvParameters) {
+void TaskReadBNO(void *pvParameters) {
   for (;;) {
     IMU_Show();
     //vTaskDelay(1);  // one tick delay (15ms) in between reads for stability
