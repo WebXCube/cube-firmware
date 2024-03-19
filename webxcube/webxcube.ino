@@ -20,7 +20,6 @@ BNO080 myIMU;
 
 
 
-unsigned long timerDelay = 10;
 
 String response;
 
@@ -103,7 +102,7 @@ int pacnum = 0;
 
 // define two tasks for Blink & AnalogRead
 void TaskBluetooth(void *pvParameters);
-void TaskReadMPU(void *pvParameters);
+void TaskReadBNO(void *pvParameters);
 
 #if CONFIG_FREERTOS_UNICORE
 #define ARDUINO_RUNNING_CORE 0
@@ -163,8 +162,6 @@ void setupOTA() {
               // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
               Serial.println("Start updating " + type);
               otaStart = true;
-              tft.fillScreen(TFT_BLACK);
-              tft.drawString("Updating...", tft.width() / 2 - 20, 55);
             })
     .onEnd([]() {
       Serial.println("\nEnd");
@@ -173,10 +170,6 @@ void setupOTA() {
     .onProgress([](unsigned int progress, unsigned int total) {
       // Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
       int percentage = (progress / (total / 100));
-      tft.setTextDatum(TC_DATUM);
-      tft.setTextPadding(tft.textWidth(" 888% "));
-      tft.drawString(String(percentage) + "%", 145, 35);
-      drawProgressBar(10, 30, 120, 15, percentage, TFT_WHITE, TFT_ORANGE);
     })
     .onError([](ota_error_t error) {
       Serial.printf("Error[%u]: ", error);
@@ -186,14 +179,10 @@ void setupOTA() {
       else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
       else if (error == OTA_END_ERROR) Serial.println("End Failed");
 
-      tft.fillScreen(TFT_BLACK);
-      tft.drawString("Update Failed", tft.width() / 2 - 20, 55);
       delay(3000);
       otaStart = false;
       initial = 1;
       targetTime = millis() + 1000;
-      tft.fillScreen(TFT_BLACK);
-      tft.setTextDatum(TL_DATUM);
       omm = 99;
     });
 
@@ -207,6 +196,7 @@ String getVoltage() {
   return String(battery_voltage) + "V";
 }
 
+/*
 void setupADC() {
   esp_adc_cal_characteristics_t adc_chars;
   esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
@@ -220,6 +210,7 @@ void setupADC() {
     Serial.println("Default Vref: 1100mV");
   }
 }
+*/
 
 String Bone = "N/A";
 bool calibrated = false;
@@ -233,54 +224,31 @@ class MyCallbacks : public BLECharacteristicCallbacks {
 
     if (value == "start") {
       if (!start) {
-        tft.fillScreen(TFT_BLACK);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.setTextDatum(MC_DATUM);
-        tft.drawString(mac_address, tft.width() / 2, 10);
-        tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        tft.drawString("CONNECTED", tft.width() / 2, tft.height() / 2);
-        tft.setTextColor(TFT_ORANGE, TFT_BLACK);
-        tft.drawString("Calibrate now", tft.width() / 2, tft.height() - 20);
       }
     } else if (value == "calibrate") {
       start = true;
     } else if (value == "dispoff") {
       if (calibrated) {
-        digitalWrite(TFT_BL, LOW);
-        tft.writecommand(ST7735_DISPOFF);
+
         displayOn = false;
       }
 
-    } else if (value == "poweroff") {
-      tft.fillScreen(TFT_BLACK);
-      tft.setTextColor(TFT_RED, TFT_BLACK);
-      tft.setTextDatum(MC_DATUM);
-      tft.drawString("POWER OFF", tft.width() / 2, tft.height() / 2);
-      // mpu.setSleepEnabled(true);
-      mpu.sleep(true);
-      Serial.println("Go to Sleep");
-      delay(3000);
-      tft.writecommand(ST7735_SLPIN);
-      tft.writecommand(ST7735_DISPOFF);
+    }
+    /* 
+    else if (value == "poweroff") {
+
       esp_sleep_enable_ext1_wakeup(GPIO_SEL_33, ESP_EXT1_WAKEUP_ANY_HIGH);
       esp_deep_sleep_start();
     }
 
+*/
     else if (value == "restart") {
-      tft.fillScreen(TFT_BLACK);
-      tft.setTextColor(TFT_RED, TFT_BLACK);
-      tft.setTextDatum(MC_DATUM);
-      tft.drawString("POWER OFF", tft.width() / 2, tft.height() / 2);
       delay(3000);
       ESP.restart();
     }
 
     else if (value == "ota") {
-      tft.fillScreen(TFT_BLACK);
-      tft.setTextColor(TFT_GREEN, TFT_BLACK);
-      tft.setTextDatum(MC_DATUM);
-      tft.drawString("Rebooting", tft.width() / 2, 30);
-      tft.drawString("in OTA mode....", tft.width() / 2, 50);
+
 
       EEPROM.write(0, 1);
       EEPROM.commit();
@@ -354,7 +322,7 @@ void setup() {
   Wire.setClock(400000);
   delay(2000);
 
-  setupADC();
+  // setupADC();
 
 
 
@@ -392,7 +360,7 @@ void setup() {
     NULL, 0);
 
   xTaskCreatePinnedToCore(
-    TaskReadMPU, "TaskReadBNO", 10000  // Stack size
+    TaskReadBNO, "TaskReadBNO", 10000  // Stack size
     ,
     NULL, 1  // Priority
     ,
@@ -409,62 +377,7 @@ void loop() {
   }
   Serial.println(pressed);
   Serial.println(millis());
-  if (digitalRead(TP_PIN_PIN) == HIGH) {
-    lastTouch = true;
-    if (!pressed) {
-      pressed = true;
-      pressedTime = millis();
-    }
 
-    if (millis() - pressedTime > 4000) {
-      if (digitalRead(TP_PIN_PIN) == HIGH) {
-        tft.fillScreen(TFT_BLACK);
-        tft.setTextColor(TFT_RED, TFT_BLACK);
-        tft.setTextDatum(MC_DATUM);
-        tft.drawString("POWER OFF", tft.width() / 2, tft.height() / 2);
-        // mpu.setSleepEnabled(true);
-        mpu.sleep(true);
-        Serial.println("Go to Sleep");
-        delay(3000);
-        tft.writecommand(ST7735_SLPIN);
-        tft.writecommand(ST7735_DISPOFF);
-        esp_sleep_enable_ext1_wakeup(GPIO_SEL_33, ESP_EXT1_WAKEUP_ANY_HIGH);
-        esp_deep_sleep_start();
-
-      } else {
-        tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        tft.setTextDatum(MC_DATUM);
-        tft.drawString("Hold for 2 seconds", tft.width() / 2, tft.height() / 2);
-      }
-    }
-  } else {
-    if (lastTouch) {
-      tft.writecommand(ST7735_SLPIN);
-
-      if (displayOn) {
-        digitalWrite(TFT_BL, LOW);
-        tft.writecommand(ST7735_DISPOFF);
-        displayOn = false;
-
-      } else {
-        digitalWrite(TFT_BL, HIGH);
-        tft.writecommand(ST7735_DISPON);
-        batt_level = ", " + getVoltage();
-        displayOn = true;
-      }
-    }
-    pressed = false;
-    lastTouch = false;
-  }
-
-  if (otaMode) {
-    ArduinoOTA.handle();
-  }
-
-  //! If OTA starts, skip the following operation
-  if (otaStart) {
-    return;
-  }
 }
 
 void IMU_Show() {
@@ -488,35 +401,7 @@ void IMU_Show() {
 }
 
 void print_calibration() {
-  Serial.println("< calibration parameters >");
-  Serial.println("accel bias [g]: ");
-  Serial.print(mpu.getAccBiasX() * 1000.f / (float)MPU9250::CALIB_ACCEL_SENSITIVITY);
-  Serial.print(", ");
-  Serial.print(mpu.getAccBiasY() * 1000.f / (float)MPU9250::CALIB_ACCEL_SENSITIVITY);
-  Serial.print(", ");
-  Serial.print(mpu.getAccBiasZ() * 1000.f / (float)MPU9250::CALIB_ACCEL_SENSITIVITY);
-  Serial.println();
-  Serial.println("gyro bias [deg/s]: ");
-  Serial.print(mpu.getGyroBiasX() / (float)MPU9250::CALIB_GYRO_SENSITIVITY);
-  Serial.print(", ");
-  Serial.print(mpu.getGyroBiasY() / (float)MPU9250::CALIB_GYRO_SENSITIVITY);
-  Serial.print(", ");
-  Serial.print(mpu.getGyroBiasZ() / (float)MPU9250::CALIB_GYRO_SENSITIVITY);
-  Serial.println();
-  Serial.println("mag bias [mG]: ");
-  Serial.print(mpu.getMagBiasX());
-  Serial.print(", ");
-  Serial.print(mpu.getMagBiasY());
-  Serial.print(", ");
-  Serial.print(mpu.getMagBiasZ());
-  Serial.println();
-  Serial.println("mag scale []: ");
-  Serial.print(mpu.getMagScaleX());
-  Serial.print(", ");
-  Serial.print(mpu.getMagScaleY());
-  Serial.print(", ");
-  Serial.print(mpu.getMagScaleZ());
-  Serial.println();
+
 }
 
 void TaskBluetooth(void *pvParameters) {
