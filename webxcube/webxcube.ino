@@ -9,17 +9,10 @@
 
 #include <WiFiManager.h>  //https://github.com/tzapu/WiFiManager
 
-
-
-
 #include <Wire.h>
 
 #include "SparkFun_BNO080_Arduino_Library.h" // Click here to get the library: http://librarymanager/All#SparkFun_BNO080
 BNO080 myIMU;
-
-
-
-
 
 String response;
 
