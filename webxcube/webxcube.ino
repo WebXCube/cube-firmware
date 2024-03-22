@@ -310,8 +310,10 @@ void setup() {
 
   pAdvertising = pServer->getAdvertising();
   pAdvertising->start();
+  
+  myIMU.begin(0x69, Wire);
 
-  Wire.begin();
+  Wire.begin(9, 8);
   Wire.setClock(400000);
   delay(2000);
 
