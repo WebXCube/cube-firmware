@@ -16,7 +16,6 @@ BNO080 myIMU;
 
 String response;
 
-
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
@@ -24,7 +23,6 @@ String response;
 
 // define the number of bytes you want to access
 #define EEPROM_SIZE 1
-
 
 unsigned long lastTime = 0;
 // Timer set to 10 minutes (600000)
@@ -39,7 +37,6 @@ bool lastTouch = false;
 bool otaMode = false;
 
 int writeCount = 0;
-
 
 boolean start = false;
 
@@ -76,7 +73,6 @@ uint8_t hh, mm, ss;
 String mac_address;
 int pacnum = 0;
 
-
 #define TP_PIN_PIN 33
 #define I2C_SDA_PIN 21
 #define I2C_SCL_PIN 22
@@ -107,8 +103,6 @@ BLEUUID SERVICE_UUID("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");  // UART service U
 BLEUUID CHARACTERISTIC_UUID("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
 BLEAdvertising *pAdvertising;
 
-
-
 void setupWiFi() {
   WiFiManager wifiManager;
   //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
@@ -124,7 +118,6 @@ void configModeCallback(WiFiManager *myWiFiManager) {
   Serial.println(WiFi.softAPIP());
   //if you used auto generated SSID, print it
   Serial.println(myWiFiManager->getConfigPortalSSID());
-
 }
 
 void drawProgressBar(uint16_t x0, uint16_t y0, uint16_t w, uint16_t h, uint8_t percentage, uint16_t frameColor, uint16_t barColor) {
@@ -182,7 +175,6 @@ void setupOTA() {
   ArduinoOTA.begin();
 }
 
-
 String getVoltage() {
   uint16_t v = analogRead(BATT_ADC_PIN);
   float battery_voltage = ((float)v / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
@@ -214,7 +206,6 @@ class MyCallbacks : public BLECharacteristicCallbacks {
     Serial.print("Received Value: ");
     Serial.println(value.c_str());
 
-
     if (value == "start") {
       if (!start) {
       }
@@ -241,8 +232,6 @@ class MyCallbacks : public BLECharacteristicCallbacks {
     }
 
     else if (value == "ota") {
-
-
       EEPROM.write(0, 1);
       EEPROM.commit();
       delay(2000);
@@ -260,19 +249,11 @@ class ServerCallbacks : public BLEServerCallbacks {
   }
 };
 
-
 void setup() {
   Serial.begin(115200);
   EEPROM.begin(EEPROM_SIZE);
 
-
-
-
-
-
   pinMode(LED_PIN, OUTPUT);
-
-
 
   int otaState = EEPROM.read(0);
   Serial.println(otaState);
@@ -319,11 +300,6 @@ void setup() {
 
   // setupADC();
 
-
-
-
-
-
   delay(100); //  Wait for BNO to boot
   // Start i2c and BNO080
   Wire.flush();   // Reset I2C
@@ -361,9 +337,6 @@ void setup() {
     ,
     NULL, 1);
 }
-
-
-
 
 void loop() {
   if ((millis() - lastTime) > timerDelay) {
