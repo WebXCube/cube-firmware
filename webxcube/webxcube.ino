@@ -304,9 +304,9 @@ void setup() {
   // Start i2c and BNO080
   Wire.flush();   // Reset I2C
   //myIMU.begin(BNO080_DEFAULT_ADDRESS, Wire);
-  myIMU.begin(0x69, Wire);
+  //myIMU.begin(0x69, Wire);
 
-  Wire.begin(9, 8);
+  //Wire.begin(9, 8);
 
    if (myIMU.begin() == false)
   {
