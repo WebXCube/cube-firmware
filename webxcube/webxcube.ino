@@ -292,23 +292,15 @@ void setup() {
   pAdvertising = pServer->getAdvertising();
   pAdvertising->start();
   
-  myIMU.begin(0x69, Wire);
-
-  Wire.begin(9, 8);
-  Wire.setClock(400000);
-  delay(2000);
-
-  // setupADC();
-
-  delay(100); //  Wait for BNO to boot
+  delay(2000); //  Wait for BNO to boot
   // Start i2c and BNO080
   Wire.flush();   // Reset I2C
   //myIMU.begin(BNO080_DEFAULT_ADDRESS, Wire);
-  //myIMU.begin(0x69, Wire);
+  myIMU.begin(0x69, Wire);
 
-  //Wire.begin(9, 8);
+  Wire.begin(9, 8);
 
-   if (myIMU.begin() == false)
+     if (myIMU.begin() == false)
   {
     Serial.println("BNO080 not detected at default I2C address. Check your jumpers and the hookup guide. Freezing...");
     while (1);
