@@ -25,14 +25,10 @@ String response;
 #define EEPROM_SIZE 1
 
 unsigned long lastTime = 0;
-// Timer set to 10 minutes (600000)
-//unsigned long timerDelay = 600000;
-// Set timer to 5 seconds (5000)
-unsigned long timerDelay = 1000 * 60 * 2;
+unsigned long timerDelay = 1000 * 60 * 2; // Timer set to 2 minutes
 
 String batt_level = "";
 bool displayOn = true;
-bool lastTouch = false;
 
 bool otaMode = false;
 
@@ -84,20 +80,7 @@ int pacnum = 0;
 #define LED_PIN 4
 #define CHARGE_PIN 32
 
-//maintain compatability with HM-10
 #define BLE_NAME "WebXCube"  //must match filters name in bluetoothterminal.js- navigator.bluetooth.requestDevice
-// BLEUUID  SERVICE_UUID((uint16_t)0x1802); // UART service UUID
-// BLEUUID CHARACTERISTIC_UUID ((uint16_t)0x1803);
-
-// define two tasks for Blink & AnalogRead
-void TaskBluetooth(void *pvParameters);
-void TaskReadBNO(void *pvParameters);
-
-#if CONFIG_FREERTOS_UNICORE
-#define ARDUINO_RUNNING_CORE 0
-#else
-#define ARDUINO_RUNNING_CORE 1
-#endif
 
 BLEUUID SERVICE_UUID("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");  // UART service UUID
 BLEUUID CHARACTERISTIC_UUID("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
@@ -125,18 +108,9 @@ void drawProgressBar(uint16_t x0, uint16_t y0, uint16_t w, uint16_t h, uint8_t p
 }
 
 void setupOTA() {
-  // Port defaults to 3232
-  // ArduinoOTA.setPort(3232);
 
   // Hostname defaults to esp3232-[MAC]
   ArduinoOTA.setHostname(mac_address.c_str());
-
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
 
   ArduinoOTA.onStart([]() {
               String type;
@@ -181,22 +155,6 @@ String getVoltage() {
   return String(battery_voltage) + "V";
 }
 
-/*
-void setupADC() {
-  esp_adc_cal_characteristics_t adc_chars;
-  esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
-  //Check type of calibration value used to characterize ADC
-  if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
-    Serial.printf("eFuse Vref:%u mV", adc_chars.vref);
-    vref = adc_chars.vref;
-  } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
-    Serial.printf("Two Point --> coeff_a:%umV coeff_b:%umV\n", adc_chars.coeff_a, adc_chars.coeff_b);
-  } else {
-    Serial.println("Default Vref: 1100mV");
-  }
-}
-*/
-
 String Bone = "N/A";
 bool calibrated = false;
 
@@ -218,15 +176,8 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       }
 
     }
-    /* 
-    else if (value == "poweroff") {
 
-      esp_sleep_enable_ext1_wakeup(GPIO_SEL_33, ESP_EXT1_WAKEUP_ANY_HIGH);
-      esp_deep_sleep_start();
-    }
-
-*/
-    else if (value == "restart") {
+        else if (value == "restart") {
       delay(3000);
       ESP.restart();
     }
@@ -292,95 +243,70 @@ void setup() {
   pAdvertising = pServer->getAdvertising();
   pAdvertising->start();
   
-  delay(2000); //  Wait for BNO to boot
+  delay(2000); // Wait for BNO to boot
   // Start i2c and BNO080
   Wire.flush();   // Reset I2C
-  //myIMU.begin(BNO080_DEFAULT_ADDRESS, Wire);
-  myIMU.begin(0x69, Wire);
+  myIMU.begin(0x69, Wire); // Use BNO080 address 0x69
 
-  Wire.begin(9, 8);
+  Wire.begin(9, 8); // I2C pins setup
 
-     if (myIMU.begin() == false)
-  {
-    Serial.println("BNO080 not detected at default I2C address. Check your jumpers and the hookup guide. Freezing...");
+  if (!myIMU.begin()) {
+    Serial.println("BNO080 not detected at default I2C address. Check your connections and the BNO080 datasheet.");
     while (1);
   }
 
   Wire.setClock(400000); //Increase I2C data rate to 400kHz
 
-  myIMU.enableRotationVector(50); //Send data update every 50ms
+  myIMU.enableRotationVector(50); // Send data update every 50ms
 
   Serial.println(F("Rotation vector enabled"));
   Serial.println(F("Output in form i, j, k, real, accuracy"));
 
   xTaskCreatePinnedToCore(
-    TaskBluetooth, "TaskBluetooth"  // A name just for humans
-    ,
-    10000  // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,
-    NULL, 1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,
-    NULL, 0);
+    TaskBluetooth, "TaskBluetooth", 10000, NULL, 1, NULL, 0);
 
   xTaskCreatePinnedToCore(
-    TaskReadBNO, "TaskReadBNO", 10000  // Stack size
-    ,
-    NULL, 1  // Priority
-    ,
-    NULL, 1);
+    TaskReadBNO, "TaskReadBNO", 10000, NULL, 1, NULL, 1);
 }
 
 void loop() {
-  if ((millis() - lastTime) > timerDelay) {
-    batt_level = ", " + getVoltage();
-    lastTime = millis();
-  }
-  Serial.println(pressed);
-  Serial.println(millis());
-
+  // Nothing to do in the loop, all tasks are handled by FreeRTOS tasks.
 }
 
 void IMU_Show() {
-  if (myIMU.dataAvailable() == true)
-  {
-    float quatI = myIMU.getQuatI();
-    float quatJ = myIMU.getQuatJ();
-    float quatK = myIMU.getQuatK();
-    float quatReal = myIMU.getQuatReal();
-    float quatRadianAccuracy = myIMU.getQuatRadianAccuracy();
-
-    Serial.print(quatI, 2);
-    Serial.print(F(" "));
-    Serial.print(quatK, 2);
-    Serial.print(F(" "));
-    Serial.print(quatJ, 2);
-    Serial.print(F(" "));
-    Serial.println(quatReal, 2);
-
+  if (myIMU.dataAvailable() == true) {
+    quat.x = myIMU.getQuatI();
+    quat.y = myIMU.getQuatJ();
+    quat.z = myIMU.getQuatK();
+    quat.w = myIMU.getQuatReal();
+    
+    Serial.print("Quaternion: ");
+    Serial.print(quat.x, 4);
+    Serial.print(", ");
+    Serial.print(quat.y, 4);
+    Serial.print(", ");
+    Serial.print(quat.z, 4);
+    Serial.print(", ");
+    Serial.println(quat.w, 4);
   }
-}
-
-void print_calibration() {
-
 }
 
 void TaskBluetooth(void *pvParameters) {
   for (;;) {
-
     static uint32_t prev_ms_ble = millis();
     if (millis() > prev_ms_ble + 1000 / 40) {
       prev_ms_ble = millis();
-      String url = mac_address + " " + quat.x + " " + quat.y + " " + quat.z + " " + quat.w;
+      String url = mac_address + " " + String(quat.x, 4) + " " + String(quat.y, 4) + " " + String(quat.z, 4) + " " + String(quat.w, 4);
       pCharacteristic->setValue(url.c_str());
       pCharacteristic->notify();
-      vTaskDelay(1);  // one tick delay (15ms) in between reads for stability
     }
+    vTaskDelay(1);
   }
 }
 
 void TaskReadBNO(void *pvParameters) {
   for (;;) {
     IMU_Show();
-    //vTaskDelay(1);  // one tick delay (15ms) in between reads for stability
+    vTaskDelay(50); // Update every 50ms
   }
 }
